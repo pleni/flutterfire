@@ -25,6 +25,7 @@ import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseAuth.AuthStateListener;
 import com.google.firebase.auth.FirebaseAuthException;
 import com.google.firebase.auth.FirebaseAuthInvalidCredentialsException;
+import com.google.firebase.auth.FirebaseAuthUserCollisionException;
 import com.google.firebase.auth.FirebaseUser;
 import com.google.firebase.auth.FirebaseUserMetadata;
 import com.google.firebase.auth.GetTokenResult;
@@ -62,6 +63,8 @@ public class FirebaseAuthPlugin implements MethodCallHandler {
   // Handles are ints used as indexes into the sparse array of active observers
   private int nextHandle = 0;
 
+  private MethodCall lastCall;
+
   public static void registerWith(PluginRegistry.Registrar registrar) {
     MethodChannel channel =
         new MethodChannel(registrar.messenger(), "plugins.flutter.io/firebase_auth");
@@ -83,6 +86,7 @@ public class FirebaseAuthPlugin implements MethodCallHandler {
 
   @Override
   public void onMethodCall(MethodCall call, Result result) {
+    lastCall = call;
     switch (call.method) {
       case "currentUser":
         handleCurrentUser(call, result, getAuth(call));
@@ -829,8 +833,19 @@ public class FirebaseAuthPlugin implements MethodCallHandler {
   private void reportException(Result result, @Nullable Exception exception) {
     if (exception != null) {
       if (exception instanceof FirebaseAuthException) {
-        final FirebaseAuthException authException = (FirebaseAuthException) exception;
-        result.error(authException.getErrorCode(), exception.getMessage(), null);
+        if(exception instanceof FirebaseAuthUserCollisionException) {
+          final FirebaseAuthUserCollisionException authException = (FirebaseAuthUserCollisionException) exception;
+          if (authException.getUpdatedCredential() != null) {
+            getAuth(lastCall)
+                    .signInWithCredential(authException.getUpdatedCredential())
+                    .addOnCompleteListener(new SignInCompleteListener(result));
+          }else{
+            result.error(authException.getErrorCode(), exception.getMessage(), authException);
+          }
+        } else {
+          final FirebaseAuthException authException = (FirebaseAuthException) exception;
+          result.error(authException.getErrorCode(), exception.getMessage(), null);
+        }
       } else if (exception instanceof FirebaseApiNotAvailableException) {
         result.error("ERROR_API_NOT_AVAILABLE", exception.getMessage(), null);
       } else if (exception instanceof FirebaseTooManyRequestsException) {

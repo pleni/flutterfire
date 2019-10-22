@@ -46,6 +46,8 @@ class FirebaseUser extends UserInfo {
   ///
   /// This allows the user to sign in to this account in the future with
   /// the given account.
+  /// If the credential is already in use, just signIn the user
+  ///
   ///
   /// Errors:
   ///
