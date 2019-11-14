@@ -36,6 +36,7 @@ NSDictionary *toDictionary(id<FIRUserInfo> userInfo) {
 
 // Handles are ints used as indexes into the NSMutableDictionary of active observers
 int nextHandle = 0;
+FlutterMethodCall *lastCall;
 
 + (void)registerWithRegistrar:(NSObject<FlutterPluginRegistrar> *)registrar {
   FlutterMethodChannel *channel =
@@ -105,6 +106,7 @@ int nextHandle = 0;
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
 - (void)handleMethodCall:(FlutterMethodCall *)call result:(FlutterResult)result {
+  lastCall = call;
   if ([@"currentUser" isEqualToString:call.method]) {
     id __block listener = [[self getAuth:call.arguments]
         addAuthStateDidChangeListener:^(FIRAuth *_Nonnull auth, FIRUser *_Nullable user) {
@@ -450,9 +452,20 @@ int nextHandle = 0;
 
 - (void)sendResult:(FlutterResult)result forObject:(NSObject *)object error:(NSError *)error {
   if (error != nil) {
-    result([FlutterError errorWithCode:getFlutterErrorCode(error)
-                               message:error.localizedDescription
-                               details:nil]);
+     if (error.code == FIRAuthErrorCodeCredentialAlreadyInUse) {
+        FIRPhoneAuthCredential *credential = error.userInfo[FIRAuthErrorUserInfoUpdatedCredentialKey];
+        [[self getAuth:lastCall.arguments]
+         signInWithCredential:credential
+         completion:^(FIRAuthDataResult *authResult, NSError *error) {
+            [self sendResult:result
+           forAuthDataResult:authResult
+                       error:error];
+        }];
+    } else {
+        result([FlutterError errorWithCode:getFlutterErrorCode(error)
+                                   message:error.localizedDescription
+                                   details:nil]);
+    }
   } else if (object == nil) {
     result(nil);
   } else {
